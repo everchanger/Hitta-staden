@@ -51,7 +51,10 @@ export async function geocode(cityName) {
     `https://nominatim.openstreetmap.org/search?` +
     `q=${encodeURIComponent(cityName)}&format=json&limit=1&addressdetails=1`;
   const res = await fetch(url, {
-    headers: { 'Accept-Language': 'sv,en' }
+    headers: {
+      'Accept-Language': 'sv,en',
+      'User-Agent': 'HittaStaden/1.0',
+    }
   });
   if (!res.ok) throw new Error(`Nominatim returnerade ett fel (HTTP ${res.status}).`);
   const data = await res.json();
@@ -101,7 +104,10 @@ export async function fetchNearby(lat, lon, radiusKm, {
     const res = await fetch(endpoint, {
       method: 'POST',
       body: `data=${encodeURIComponent(query)}`,
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'HittaStaden/1.0',
+      },
       signal: controller.signal,
     });
     if (!res.ok) throw new Error(`Overpass API returnerade ett fel (HTTP ${res.status}).`);
