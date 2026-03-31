@@ -420,11 +420,17 @@
       return data[0];
     }
 
+    const OVERPASS_ENDPOINTS = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://overpass.openstreetmap.ru/cgi/interpreter',
+    ];
+
     async function fetchNearby(lat, lon, radiusKm) {
       const radiusM = radiusKm * 1000;
       // Query larger cities/towns and notable landmarks within the radius
       const query = `
-        [out:json][timeout:25];
+        [out:json][timeout:30];
         (
           node["place"~"^(city|town)$"](around:${radiusM},${lat},${lon});
           node["tourism"="attraction"]["name"](around:${radiusM},${lat},${lon});
@@ -434,14 +440,26 @@
         );
         out center;
       `;
-      const res = await fetch('https://overpass-api.de/api/interpreter', {
-        method: 'POST',
-        body: `data=${encodeURIComponent(query)}`,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
-      });
-      if (!res.ok) throw new Error(`Overpass API returnerade ett fel (HTTP ${res.status}).`);
-      const data = await res.json();
-      return data.elements || [];
+      let lastError;
+      for (const endpoint of OVERPASS_ENDPOINTS) {
+        try {
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            body: `data=${encodeURIComponent(query)}`,
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            signal: AbortSignal.timeout(35000),
+          });
+          if (!res.ok) {
+            lastError = new Error(`Overpass API returnerade ett fel (HTTP ${res.status}).`);
+            continue;
+          }
+          const data = await res.json();
+          return data.elements || [];
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      throw lastError;
     }
 
     function renderMap(originLat, originLon, originName, places) {
