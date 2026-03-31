@@ -392,6 +392,8 @@
     const PLACE_TYPE_LABELS = {
       city: 'Stad',
       town: 'Tätort',
+      village: 'Ort',
+      hamlet: 'Ort',
       attraction: 'Sevärdhet',
       monument: 'Monument',
       castle: 'Slott/Borg',
@@ -428,11 +430,11 @@
 
     async function fetchNearby(lat, lon, radiusKm) {
       const radiusM = radiusKm * 1000;
-      // Query larger cities/towns and notable landmarks within the radius
+      // Query cities/towns/villages/hamlets and notable landmarks within the radius
       const query = `
         [out:json][timeout:30];
         (
-          node["place"~"^(city|town)$"](around:${radiusM},${lat},${lon});
+          node["place"~"^(city|town|village|hamlet)$"](around:${radiusM},${lat},${lon});
           node["tourism"="attraction"]["name"](around:${radiusM},${lat},${lon});
           node["historic"]["name"](around:${radiusM},${lat},${lon});
           way["tourism"="attraction"]["name"](around:${radiusM},${lat},${lon});
@@ -440,26 +442,24 @@
         );
         out center;
       `;
-      let lastError;
-      for (const endpoint of OVERPASS_ENDPOINTS) {
-        try {
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            body: `data=${encodeURIComponent(query)}`,
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            signal: AbortSignal.timeout(35000),
-          });
-          if (!res.ok) {
-            lastError = new Error(`Overpass API returnerade ett fel (HTTP ${res.status}).`);
-            continue;
-          }
-          const data = await res.json();
-          return data.elements || [];
-        } catch (err) {
-          lastError = err;
-        }
+
+      const fetchFromEndpoint = async (endpoint) => {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          body: `data=${encodeURIComponent(query)}`,
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          signal: AbortSignal.timeout(35000),
+        });
+        if (!res.ok) throw new Error(`Overpass API returnerade ett fel (HTTP ${res.status}).`);
+        const data = await res.json();
+        return data.elements || [];
+      };
+
+      try {
+        return await Promise.any(OVERPASS_ENDPOINTS.map(fetchFromEndpoint));
+      } catch {
+        throw new Error('Overpass API är inte tillgänglig. Försök igen senare.');
       }
-      throw lastError;
     }
 
     function renderMap(originLat, originLon, originName, places) {
