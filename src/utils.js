@@ -63,6 +63,7 @@ export async function geocode(cityName) {
   const features = data.features || [];
   if (!features.length) throw new Error(`Kunde inte hitta "${cityName}". Försök med ett annat namn.`);
   const feature = features[0];
+  // GeoJSON uses [longitude, latitude] order
   const [lon, lat] = feature.geometry.coordinates;
   const props = feature.properties || {};
   const parts = [props.name, props.county, props.country].filter(Boolean);
