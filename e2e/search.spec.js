@@ -1,8 +1,8 @@
 import { test, expect } from '@playwright/test';
 
 // ---------------------------------------------------------------------------
-// Helper: perform a search and wait for the operation to finish.
-// Returns true when results appeared, false when an error was shown.
+// Helper: perform a search and wait for results to appear.
+// The GeoNames dataset API typically responds in < 1 second.
 // ---------------------------------------------------------------------------
 async function searchCity(page, cityName) {
   await page.goto('/');
@@ -12,14 +12,8 @@ async function searchCity(page, cityName) {
   await input.fill(cityName);
   await btn.click();
 
-  // The app's worst case is ~77 s (35 s Overpass timeout × 2 attempts + 2 s
-  // retry delay + geocode).  Wait just above that so a real failure is
-  // surfaced quickly instead of hanging for minutes.
-  await expect(btn).toBeEnabled({ timeout: 80_000 });
-
-  // Check which outcome occurred
-  const hasResults = await page.locator('.result-list').isVisible();
-  return hasResults;
+  // Wait for the result list to appear (search succeeded)
+  await expect(page.locator('.result-list')).toBeVisible();
 }
 
 // ---------------------------------------------------------------------------
@@ -27,35 +21,29 @@ async function searchCity(page, cityName) {
 // ---------------------------------------------------------------------------
 test.describe('Stockholm search', () => {
   test('finds nearby places and shows them on the page', async ({ page }) => {
-    const hasResults = await searchCity(page, 'Stockholm');
+    await searchCity(page, 'Stockholm');
 
-    if (hasResults) {
-      // Origin card should mention Stockholm
-      const originCard = page.locator('.origin-card');
-      await expect(originCard).toContainText('Stockholm');
+    // Origin card should mention Stockholm
+    const originCard = page.locator('.origin-card');
+    await expect(originCard).toContainText('Stockholm');
 
-      // Should have result items
-      const items = page.locator('.result-item');
-      const count = await items.count();
-      expect(count).toBeGreaterThan(0);
+    // Should have result items
+    const items = page.locator('.result-item');
+    const count = await items.count();
+    expect(count).toBeGreaterThan(0);
 
-      // Each result has a name and a distance
-      for (let i = 0; i < Math.min(count, 3); i++) {
-        const item = items.nth(i);
-        await expect(item.locator('.place-name')).not.toBeEmpty();
-        await expect(item.locator('.distance')).toContainText(/\d/);
-      }
-
-      // Map should be visible
-      await expect(page.locator('#map')).toBeVisible();
-
-      // Status text should mention Stockholm
-      await expect(page.locator('#status')).toContainText(/platser nära Stockholm/i);
-    } else {
-      // API was unavailable – just verify the error is displayed cleanly
-      const status = page.locator('#status');
-      await expect(status).toHaveClass(/error/);
+    // Each result has a name and a distance
+    for (let i = 0; i < Math.min(count, 3); i++) {
+      const item = items.nth(i);
+      await expect(item.locator('.place-name')).not.toBeEmpty();
+      await expect(item.locator('.distance')).toContainText(/\d/);
     }
+
+    // Map should be visible
+    await expect(page.locator('#map')).toBeVisible();
+
+    // Status text should mention Stockholm
+    await expect(page.locator('#status')).toContainText(/platser nära Stockholm/i);
   });
 });
 
@@ -64,17 +52,13 @@ test.describe('Stockholm search', () => {
 // ---------------------------------------------------------------------------
 test.describe('Höör search', () => {
   test('shows nearby places for a small town', async ({ page }) => {
-    const hasResults = await searchCity(page, 'Höör');
+    await searchCity(page, 'Höör');
 
-    if (hasResults) {
-      const originCard = page.locator('.origin-card');
-      await expect(originCard).toContainText('Höör');
+    const originCard = page.locator('.origin-card');
+    await expect(originCard).toContainText('Höör');
 
-      const items = page.locator('.result-item');
-      expect(await items.count()).toBeGreaterThan(0);
-    } else {
-      await expect(page.locator('#status')).toHaveClass(/error/);
-    }
+    const items = page.locator('.result-item');
+    expect(await items.count()).toBeGreaterThan(0);
   });
 });
 
@@ -83,17 +67,13 @@ test.describe('Höör search', () => {
 // ---------------------------------------------------------------------------
 test.describe('Kiruna search', () => {
   test('shows results for a northern city', async ({ page }) => {
-    const hasResults = await searchCity(page, 'Kiruna');
+    await searchCity(page, 'Kiruna');
 
-    if (hasResults) {
-      const originCard = page.locator('.origin-card');
-      await expect(originCard).toContainText('Kiruna');
+    const originCard = page.locator('.origin-card');
+    await expect(originCard).toContainText('Kiruna');
 
-      const items = page.locator('.result-item');
-      expect(await items.count()).toBeGreaterThan(0);
-    } else {
-      await expect(page.locator('#status')).toHaveClass(/error/);
-    }
+    const items = page.locator('.result-item');
+    expect(await items.count()).toBeGreaterThan(0);
   });
 });
 
@@ -129,7 +109,7 @@ test.describe('error handling', () => {
     await btn.click();
 
     const status = page.locator('#status');
-    await expect(status).toContainText(/Kunde inte hitta/i, { timeout: 15_000 });
+    await expect(status).toContainText(/Kunde inte hitta/i);
     await expect(status).toHaveClass(/error/);
   });
 });
@@ -150,10 +130,11 @@ test.describe('search button state', () => {
     await expect(btn).toBeDisabled();
     await expect(btn).toContainText('Söker');
 
-    // Wait for search to complete (success or error)
-    await expect(btn).toBeEnabled({ timeout: 80_000 });
+    // Wait for search to complete
+    await expect(page.locator('.result-list')).toBeVisible();
 
-    // Button should say "Sök" again
+    // Button should be re-enabled and say "Sök"
+    await expect(btn).toBeEnabled();
     await expect(btn).toContainText('Sök');
   });
 });
