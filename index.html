@@ -4,18 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Hitta närmaste städer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/sp38=" crossorigin=""></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: #f0f4f8;
-      color: #1a202c;
+      font-family: 'DM Sans', 'Segoe UI', system-ui, sans-serif;
+      background: linear-gradient(145deg, #fdf4f8 0%, #f5f0ff 100%);
+      background-attachment: fixed;
+      color: #2d1b2e;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 2rem 1rem;
+      padding: 2.5rem 1rem;
     }
 
     header {
@@ -24,15 +30,21 @@
     }
 
     header h1 {
-      font-size: 2rem;
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 2.2rem;
       font-weight: 700;
-      color: #2b6cb0;
+      color: #be185d;
+      background: linear-gradient(135deg, #be185d, #7c3aed);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
     }
 
     header p {
-      margin-top: 0.5rem;
-      color: #4a5568;
+      margin-top: 0.6rem;
+      color: #7e6a80;
       font-size: 1rem;
+      font-weight: 400;
     }
 
     .search-box {
@@ -45,38 +57,54 @@
 
     .search-box input {
       flex: 1;
-      padding: 0.75rem 1rem;
-      border: 2px solid #bee3f8;
-      border-radius: 8px;
+      padding: 0.8rem 1.1rem;
+      border: 2px solid #f9a8d4;
+      border-radius: 50px;
       font-size: 1rem;
+      font-family: inherit;
       outline: none;
-      transition: border-color 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s;
       background: #fff;
+      color: #2d1b2e;
+    }
+
+    .search-box input::placeholder {
+      color: #c4a0bb;
     }
 
     .search-box input:focus {
-      border-color: #3182ce;
+      border-color: #ec4899;
+      box-shadow: 0 0 0 3px rgba(236, 72, 153, 0.32);
     }
 
     .search-box button {
-      padding: 0.75rem 1.4rem;
-      background: #3182ce;
+      padding: 0.8rem 1.6rem;
+      background: linear-gradient(135deg, #ec4899, #be185d);
       color: #fff;
       border: none;
-      border-radius: 8px;
+      border-radius: 50px;
       font-size: 1rem;
+      font-family: inherit;
+      font-weight: 600;
       cursor: pointer;
-      transition: background 0.2s;
+      transition: opacity 0.2s, transform 0.1s;
       white-space: nowrap;
+      box-shadow: 0 4px 14px rgba(190, 24, 93, 0.3);
     }
 
     .search-box button:hover {
-      background: #2b6cb0;
+      opacity: 0.88;
+    }
+
+    .search-box button:active {
+      transform: scale(0.97);
     }
 
     .search-box button:disabled {
-      background: #90cdf4;
+      background: linear-gradient(135deg, #f9a8d4, #e879a0);
+      box-shadow: none;
       cursor: not-allowed;
+      opacity: 0.7;
     }
 
     #radius-row {
@@ -85,30 +113,30 @@
       gap: 0.75rem;
       margin-bottom: 1.5rem;
       font-size: 0.95rem;
-      color: #4a5568;
+      color: #7e6a80;
     }
 
     #radius-row input[type=range] {
-      accent-color: #3182ce;
+      accent-color: #ec4899;
       cursor: pointer;
     }
 
     #radius-label {
       min-width: 5ch;
       font-weight: 600;
-      color: #2b6cb0;
+      color: #be185d;
     }
 
     #status {
       min-height: 1.5rem;
       font-size: 0.95rem;
-      color: #718096;
+      color: #9d7aaa;
       margin-bottom: 1rem;
       text-align: center;
     }
 
     #status.error {
-      color: #c53030;
+      color: #9f1239;
     }
 
     #results {
@@ -117,13 +145,14 @@
     }
 
     .origin-card {
-      background: #ebf8ff;
-      border: 1px solid #bee3f8;
-      border-radius: 10px;
+      background: linear-gradient(135deg, #fdf2f8, #f5eeff);
+      border: 1px solid #f9a8d4;
+      border-radius: 14px;
       padding: 1rem 1.25rem;
       margin-bottom: 1.25rem;
       font-size: 0.95rem;
-      color: #2c5282;
+      color: #831843;
+      box-shadow: 0 2px 10px rgba(190, 24, 93, 0.07);
     }
 
     .origin-card strong {
@@ -141,34 +170,37 @@
 
     .result-item {
       background: #fff;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
+      border: 1px solid #fce7f3;
+      border-radius: 14px;
       padding: 0.9rem 1.25rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      transition: box-shadow 0.15s;
+      transition: box-shadow 0.18s, transform 0.15s;
+      box-shadow: 0 1px 4px rgba(190, 24, 93, 0.06);
     }
 
     .result-item:hover {
-      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      box-shadow: 0 4px 14px rgba(190, 24, 93, 0.12);
+      transform: translateY(-1px);
     }
 
     .result-item .place-name {
       font-weight: 600;
       font-size: 1rem;
+      color: #2d1b2e;
     }
 
     .result-item .place-type {
       font-size: 0.8rem;
-      color: #718096;
+      color: #9d7aaa;
       margin-top: 0.15rem;
     }
 
     .result-item .distance {
       font-size: 0.95rem;
       font-weight: 700;
-      color: #3182ce;
+      color: #be185d;
       white-space: nowrap;
       margin-left: 1rem;
     }
@@ -177,11 +209,11 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 1.6rem;
-      height: 1.6rem;
+      width: 1.7rem;
+      height: 1.7rem;
       border-radius: 50%;
-      background: #ebf8ff;
-      color: #2b6cb0;
+      background: linear-gradient(135deg, #fce7f3, #ede9fe);
+      color: #be185d;
       font-size: 0.75rem;
       font-weight: 700;
       margin-right: 0.75rem;
@@ -207,12 +239,60 @@
     footer {
       margin-top: 3rem;
       font-size: 0.8rem;
-      color: #a0aec0;
+      color: #b898bb;
       text-align: center;
     }
 
-    footer a { color: #90cdf4; text-decoration: none; }
+    footer a { color: #e879a0; text-decoration: none; }
     footer a:hover { text-decoration: underline; }
+
+    #map {
+      display: none;
+      width: 100%;
+      max-width: 600px;
+      height: 400px;
+      border-radius: 16px;
+      overflow: hidden;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 4px 20px rgba(190, 24, 93, 0.12);
+      border: 1px solid #fce7f3;
+    }
+
+    .map-marker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      font-size: 0.72rem;
+      font-weight: 700;
+      font-family: 'DM Sans', sans-serif;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    }
+
+    .map-marker--origin {
+      font-size: 1.4rem;
+      background: none;
+      box-shadow: none;
+      width: 32px;
+      height: 32px;
+    }
+
+    .map-marker--place {
+      background: linear-gradient(135deg, #ec4899, #be185d);
+      color: #fff;
+    }
+
+    .map-marker--landmark {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #fff;
+    }
+
+    .rank-badge--landmark {
+      background: linear-gradient(135deg, #fef3c7, #fde68a);
+      color: #92400e;
+    }
   </style>
 </head>
 <body>
@@ -248,6 +328,8 @@
 
   <div id="status" role="status" aria-live="polite"></div>
 
+  <div id="map" aria-label="Karta över sökresultat"></div>
+
   <div id="results" aria-live="polite"></div>
 
   <footer>
@@ -264,6 +346,8 @@
     const resultsEl = document.getElementById('results');
     const radiusSlider = document.getElementById('radius-slider');
     const radiusLabel = document.getElementById('radius-label');
+
+    let leafletMap = null;
 
     radiusSlider.addEventListener('input', () => {
       radiusLabel.textContent = `${radiusSlider.value} km`;
@@ -308,10 +392,19 @@
     const PLACE_TYPE_LABELS = {
       city: 'Stad',
       town: 'Tätort',
-      village: 'By',
-      hamlet: 'Småort',
-      suburb: 'Stadsdel',
-      municipality: 'Kommun',
+      attraction: 'Sevärdhet',
+      monument: 'Monument',
+      castle: 'Slott/Borg',
+      ruins: 'Ruiner',
+      archaeological_site: 'Fornlämning',
+      memorial: 'Minnesmärke',
+      museum: 'Museum',
+      church: 'Kyrka',
+      palace: 'Palats',
+      fort: 'Fästning',
+      city_gate: 'Stadsport',
+      manor: 'Herrgård',
+      historic: 'Historisk plats',
     };
 
     async function geocode(cityName) {
@@ -329,13 +422,17 @@
 
     async function fetchNearby(lat, lon, radiusKm) {
       const radiusM = radiusKm * 1000;
-      // Query cities, towns, villages and hamlets within the radius
+      // Query larger cities/towns and notable landmarks within the radius
       const query = `
         [out:json][timeout:25];
         (
-          node["place"~"^(city|town|village|hamlet|suburb)$"](around:${radiusM},${lat},${lon});
+          node["place"~"^(city|town)$"](around:${radiusM},${lat},${lon});
+          node["tourism"="attraction"]["name"](around:${radiusM},${lat},${lon});
+          node["historic"]["name"](around:${radiusM},${lat},${lon});
+          way["tourism"="attraction"]["name"](around:${radiusM},${lat},${lon});
+          way["historic"]["name"](around:${radiusM},${lat},${lon});
         );
-        out body;
+        out center;
       `;
       const res = await fetch('https://overpass-api.de/api/interpreter', {
         method: 'POST',
@@ -347,10 +444,62 @@
       return data.elements || [];
     }
 
+    function renderMap(originLat, originLon, originName, places) {
+      const mapEl = document.getElementById('map');
+      mapEl.style.display = 'block';
+
+      if (leafletMap) {
+        leafletMap.remove();
+        leafletMap = null;
+      }
+
+      leafletMap = L.map('map');
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>',
+        maxZoom: 19,
+      }).addTo(leafletMap);
+
+      // Origin marker
+      const originIcon = L.divIcon({
+        className: '',
+        html: '<div class="map-marker map-marker--origin">📍</div>',
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -18],
+      });
+      L.marker([originLat, originLon], { icon: originIcon })
+        .bindPopup(`<strong>${escapeHtml(originName)}</strong><br>Startpunkt`)
+        .addTo(leafletMap);
+
+      const bounds = [[originLat, originLon]];
+      places.forEach((place, i) => {
+        bounds.push([place.lat, place.lon]);
+        const isLandmark = place.category === 'landmark';
+        const icon = L.divIcon({
+          className: '',
+          html: `<div class="map-marker ${isLandmark ? 'map-marker--landmark' : 'map-marker--place'}">${i + 1}</div>`,
+          iconSize: [28, 28],
+          iconAnchor: [14, 14],
+          popupAnchor: [0, -16],
+        });
+        const typeLabel = PLACE_TYPE_LABELS[place.type] || place.type || 'Ort';
+        L.marker([place.lat, place.lon], { icon })
+          .bindPopup(`<strong>${escapeHtml(place.name)}</strong><br>${escapeHtml(typeLabel)}<br>${formatDistance(place.dist)}`)
+          .addTo(leafletMap);
+      });
+
+      leafletMap.fitBounds(bounds, { padding: [30, 30] });
+    }
+
     async function search(cityName) {
       setLoading(true);
       setStatus('Letar upp koordinater…');
       resultsEl.innerHTML = '';
+
+      // Hide and reset map while loading
+      const mapEl = document.getElementById('map');
+      mapEl.style.display = 'none';
+      if (leafletMap) { leafletMap.remove(); leafletMap = null; }
 
       try {
         // Step 1: geocode the input city
@@ -359,40 +508,64 @@
         const originLon = parseFloat(origin.lon);
         const originDisplayName = origin.display_name.split(',')[0];
 
-        // Step 2: fetch nearby places via Overpass
+        // Step 2: fetch nearby cities and landmarks via Overpass
         const radiusKm = parseInt(radiusSlider.value, 10);
-        setStatus(`Hämtar orter inom ${radiusKm} km…`);
+        setStatus(`Hämtar städer och landmärken inom ${radiusKm} km…`);
         const places = await fetchNearby(originLat, originLon, radiusKm);
 
-        // Step 3: calculate distances and exclude the origin itself
+        // Step 3: calculate distances, resolve coordinates, derive category
         const originOsmId = origin.osm_id ? String(origin.osm_id) : null;
 
         const withDist = places
           .filter(p => {
-            // Exclude the exact origin node if we can identify it
             if (originOsmId && String(p.id) === originOsmId) return false;
             const name = p.tags && p.tags.name;
             return name && name.trim().length > 0;
           })
-          .map(p => ({
-            id: p.id,
-            name: p.tags.name,
-            type: p.tags.place,
-            lat: p.lat,
-            lon: p.lon,
-            dist: haversine(originLat, originLon, p.lat, p.lon),
-          }))
+          .map(p => {
+            // Nodes have lat/lon directly; ways/relations have a center object
+            const lat = p.lat ?? p.center?.lat;
+            const lon = p.lon ?? p.center?.lon;
+            if (lat == null || lon == null) return null;
+            const placeType = p.tags.place;
+            const tourismType = p.tags.tourism;
+            const historicType = p.tags.historic;
+            let type, category;
+            if (placeType) {
+              type = placeType;
+              category = 'place';
+            } else if (tourismType) {
+              type = tourismType;
+              category = 'landmark';
+            } else {
+              type = historicType || 'historic';
+              category = 'landmark';
+            }
+            return {
+              id: p.id,
+              name: p.tags.name,
+              type,
+              category,
+              lat,
+              lon,
+              dist: haversine(originLat, originLon, lat, lon),
+            };
+          })
+          .filter(p => p !== null)
           .sort((a, b) => a.dist - b.dist);
 
         if (!withDist.length) {
-          setStatus(`Inga orter hittades inom ${radiusKm} km från "${originDisplayName}".`);
+          setStatus(`Inga platser hittades inom ${radiusKm} km från "${originDisplayName}".`);
           setLoading(false);
           return;
         }
 
-        setStatus(`Visar ${withDist.length} orter nära ${originDisplayName}`);
+        setStatus(`Visar ${withDist.length} platser nära ${originDisplayName}`);
 
-        // Render
+        // Render map
+        renderMap(originLat, originLon, originDisplayName, withDist);
+
+        // Render list
         const originCard = document.createElement('div');
         originCard.className = 'origin-card';
         originCard.innerHTML = `
@@ -407,9 +580,10 @@
           const li = document.createElement('li');
           li.className = 'result-item';
           const typeLabel = PLACE_TYPE_LABELS[place.type] || place.type || 'Ort';
+          const isLandmark = place.category === 'landmark';
           li.innerHTML = `
             <div class="place-info">
-              <span class="rank-badge">${i + 1}</span>
+              <span class="rank-badge${isLandmark ? ' rank-badge--landmark' : ''}">${i + 1}</span>
               <div class="place-text">
                 <div class="place-name">${escapeHtml(place.name)}</div>
                 <div class="place-type">${escapeHtml(typeLabel)}</div>
