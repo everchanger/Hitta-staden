@@ -33,11 +33,31 @@ export function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+const RETRY_DELAY_MS = 500;
+
+/**
+ * Fetch with automatic retries for transient network errors.
+ * @param {string} url        Request URL
+ * @param {RequestInit} options  Fetch options
+ * @param {number} retries    Max retry attempts (default 2)
+ * @returns {Promise<Response>}
+ */
+async function fetchWithRetry(url, options = {}, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fetch(url, options);
+    } catch (err) {
+      if (attempt >= retries) throw err;
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
+    }
+  }
+}
+
 export async function geocode(cityName) {
   const url =
     `https://nominatim.openstreetmap.org/search?` +
     `q=${encodeURIComponent(cityName)}&format=json&limit=1&addressdetails=1`;
-  const res = await fetch(url, {
+  const res = await fetchWithRetry(url, {
     headers: {
       'Accept-Language': 'sv,en',
       'User-Agent': 'HittaStaden/1.0',
@@ -68,7 +88,7 @@ export async function fetchNearby(lat, lon, radiusKm, {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithRetry(url, {
       headers: { 'User-Agent': 'HittaStaden/1.0' },
       signal: controller.signal,
     });
