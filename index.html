@@ -335,7 +335,7 @@
   <footer>
     Data från <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>
     via <a href="https://nominatim.openstreetmap.org" target="_blank" rel="noopener">Nominatim</a>
-    &amp; <a href="https://overpass-api.de" target="_blank" rel="noopener">Overpass API</a>.
+    &amp; <a href="https://www.geonames.org" target="_blank" rel="noopener">GeoNames</a>.
   </footer>
 
   <script type="module">
@@ -381,6 +381,7 @@
     }
 
     function renderMap(originLat, originLon, originName, places) {
+      if (typeof L === 'undefined') return;
       const mapEl = document.getElementById('map');
       mapEl.style.display = 'block';
 
@@ -410,10 +411,9 @@
       const bounds = [[originLat, originLon]];
       places.forEach((place, i) => {
         bounds.push([place.lat, place.lon]);
-        const isLandmark = place.category === 'landmark';
         const icon = L.divIcon({
           className: '',
-          html: `<div class="map-marker ${isLandmark ? 'map-marker--landmark' : 'map-marker--place'}">${i + 1}</div>`,
+          html: `<div class="map-marker map-marker--place">${i + 1}</div>`,
           iconSize: [28, 28],
           iconAnchor: [14, 14],
           popupAnchor: [0, -16],
@@ -444,14 +444,13 @@
         const originLon = parseFloat(origin.lon);
         const originDisplayName = origin.display_name.split(',')[0];
 
-        // Step 2: fetch nearby cities and landmarks via Overpass
+        // Step 2: fetch nearby cities via GeoNames cities dataset
         const radiusKm = parseInt(radiusSlider.value, 10);
-        setStatus(`Hämtar städer och landmärken inom ${radiusKm} km…`);
+        setStatus(`Hämtar städer inom ${radiusKm} km…`);
         const places = await fetchNearby(originLat, originLon, radiusKm);
 
-        // Step 3: calculate distances, resolve coordinates, derive category
-        const originOsmId = origin.osm_id ? String(origin.osm_id) : null;
-        const withDist = processPlaces(places, originLat, originLon, originOsmId);
+        // Step 3: calculate distances, categorise, and sort
+        const withDist = processPlaces(places, originLat, originLon, originDisplayName);
 
         if (!withDist.length) {
           setStatus(`Inga platser hittades inom ${radiusKm} km från "${originDisplayName}".`);
@@ -479,10 +478,9 @@
           const li = document.createElement('li');
           li.className = 'result-item';
           const typeLabel = PLACE_TYPE_LABELS[place.type] || place.type || 'Ort';
-          const isLandmark = place.category === 'landmark';
           li.innerHTML = `
             <div class="place-info">
-              <span class="rank-badge${isLandmark ? ' rank-badge--landmark' : ''}">${i + 1}</span>
+              <span class="rank-badge">${i + 1}</span>
               <div class="place-text">
                 <div class="place-name">${escapeHtml(place.name)}</div>
                 <div class="place-type">${escapeHtml(typeLabel)}</div>

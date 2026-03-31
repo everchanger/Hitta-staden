@@ -1,10 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import {
   haversine,
   formatDistance,
   escapeHtml,
   PLACE_TYPE_LABELS,
-  OVERPASS_ENDPOINTS,
+  GEONAMES_DATASET_URL,
+  FETCH_TIMEOUT_MS,
   geocode,
   fetchNearby,
   processPlaces,
@@ -107,12 +108,7 @@ describe('escapeHtml', () => {
 // ---------------------------------------------------------------------------
 describe('PLACE_TYPE_LABELS', () => {
   it('contains all expected place type keys', () => {
-    const expectedKeys = [
-      'city', 'town', 'village', 'hamlet',
-      'attraction', 'monument', 'castle', 'ruins',
-      'archaeological_site', 'memorial', 'museum', 'church',
-      'palace', 'fort', 'city_gate', 'manor', 'historic',
-    ];
+    const expectedKeys = ['city', 'town', 'village', 'hamlet'];
     for (const key of expectedKeys) {
       expect(PLACE_TYPE_LABELS).toHaveProperty(key);
     }
@@ -121,24 +117,21 @@ describe('PLACE_TYPE_LABELS', () => {
   it('has Swedish labels for common types', () => {
     expect(PLACE_TYPE_LABELS.city).toBe('Stad');
     expect(PLACE_TYPE_LABELS.town).toBe('Tätort');
-    expect(PLACE_TYPE_LABELS.castle).toBe('Slott/Borg');
-    expect(PLACE_TYPE_LABELS.church).toBe('Kyrka');
+    expect(PLACE_TYPE_LABELS.village).toBe('Ort');
   });
 });
 
 // ---------------------------------------------------------------------------
-// OVERPASS_ENDPOINTS
+// GEONAMES_DATASET_URL / FETCH_TIMEOUT_MS
 // ---------------------------------------------------------------------------
-describe('OVERPASS_ENDPOINTS', () => {
-  it('contains exactly 4 endpoints', () => {
-    expect(OVERPASS_ENDPOINTS).toHaveLength(4);
+describe('GeoNames constants', () => {
+  it('has a valid dataset URL', () => {
+    expect(GEONAMES_DATASET_URL).toContain('opendatasoft.com');
+    expect(GEONAMES_DATASET_URL).toContain('geonames');
   });
 
-  it('contains all expected Overpass mirror URLs', () => {
-    expect(OVERPASS_ENDPOINTS).toContain('https://overpass-api.de/api/interpreter');
-    expect(OVERPASS_ENDPOINTS).toContain('https://overpass.kumi.systems/api/interpreter');
-    expect(OVERPASS_ENDPOINTS).toContain('https://overpass.private.coffee/api/interpreter');
-    expect(OVERPASS_ENDPOINTS).toContain('https://overpass.openstreetmap.fr/api/interpreter');
+  it('has a reasonable fetch timeout', () => {
+    expect(FETCH_TIMEOUT_MS).toBe(10_000);
   });
 });
 
@@ -202,6 +195,7 @@ describe('geocode', () => {
     await geocode('Göteborg');
     const [, options] = fetch.mock.calls[0];
     expect(options.headers['Accept-Language']).toBe('sv,en');
+    expect(options.headers['User-Agent']).toBe('HittaStaden/1.0');
   });
 });
 
@@ -209,36 +203,35 @@ describe('geocode', () => {
 // fetchNearby  (uses mocked fetch)
 // ---------------------------------------------------------------------------
 describe('fetchNearby', () => {
-  const TEST_ENDPOINTS = ['https://endpoint-a.test', 'https://endpoint-b.test'];
+  const TEST_DATASET_URL = 'https://test.example.com/api/records';
   const TEST_OPTS = {
-    endpoints: TEST_ENDPOINTS,
-    serverTimeoutS: 5,
-    clientTimeoutMs: 60000,
+    datasetUrl: TEST_DATASET_URL,
+    timeoutMs: 60000,
   };
 
   beforeEach(() => {
-    vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn());
   });
 
   afterEach(() => {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
-  it('returns elements from the first responding endpoint', async () => {
-    const elements = [{ id: 1, tags: { name: 'Plats A' } }];
-    fetch.mockResolvedValue({
+  it('returns results from the GeoNames dataset', async () => {
+    const results = [
+      { name: 'Sollentuna', coordinates: { lat: 59.43, lon: 17.95 }, population: 70000 },
+    ];
+    fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ elements }),
+      json: async () => ({ results }),
     });
 
     const result = await fetchNearby(59.33, 18.07, 50, TEST_OPTS);
-    expect(result).toEqual(elements);
+    expect(result).toEqual(results);
   });
 
-  it('returns an empty array when elements key is missing', async () => {
-    fetch.mockResolvedValue({
+  it('returns an empty array when results key is missing', async () => {
+    fetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({}),
     });
@@ -247,57 +240,40 @@ describe('fetchNearby', () => {
     expect(result).toEqual([]);
   });
 
-  it('falls back to the second endpoint if the first throws', async () => {
-    const elements = [{ id: 2, tags: { name: 'Plats B' } }];
-    fetch
-      .mockRejectedValueOnce(new Error('endpoint-a down'))
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ elements }),
-      });
+  it('throws on HTTP error', async () => {
+    fetch.mockResolvedValueOnce({ ok: false, status: 500 });
 
-    const result = await fetchNearby(59.33, 18.07, 50, TEST_OPTS);
-    expect(result).toEqual(elements);
+    await expect(fetchNearby(59.33, 18.07, 50, TEST_OPTS)).rejects.toThrow(
+      'GeoNames-data returnerade ett fel (HTTP 500).'
+    );
   });
 
-  it('throws after all retries are exhausted when every endpoint fails', async () => {
-    fetch.mockRejectedValue(new Error('all down'));
-
-    // Assert rejection and advance fake timers concurrently so the promise
-    // is always observed before it can become an unhandled rejection.
-    await Promise.all([
-      expect(fetchNearby(59.33, 18.07, 50, {
-        ...TEST_OPTS,
-        clientTimeoutMs: 60000,
-      })).rejects.toThrow('Overpass API är inte tillgänglig. Försök igen senare.'),
-      vi.advanceTimersByTimeAsync(2100),
-    ]);
-  });
-
-  it('throws on HTTP error from an endpoint', async () => {
-    fetch.mockResolvedValue({ ok: false, status: 429 });
-
-    await Promise.all([
-      expect(fetchNearby(59.33, 18.07, 50, TEST_OPTS)).rejects.toThrow(
-        'Overpass API är inte tillgänglig. Försök igen senare.'
-      ),
-      vi.advanceTimersByTimeAsync(2100),
-    ]);
-  });
-
-  it('uses POST with url-encoded body', async () => {
-    fetch.mockResolvedValue({
+  it('builds the correct query URL with coordinates and radius', async () => {
+    fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => ({ elements: [] }),
+      json: async () => ({ results: [] }),
     });
 
     await fetchNearby(59.33, 18.07, 50, TEST_OPTS);
 
     const [url, options] = fetch.mock.calls[0];
-    expect(TEST_ENDPOINTS).toContain(url);
-    expect(options.method).toBe('POST');
-    expect(options.headers['Content-Type']).toBe('application/x-www-form-urlencoded');
-    expect(options.body).toMatch(/^data=/);
+    expect(url).toContain(TEST_DATASET_URL);
+    expect(url).toContain(encodeURIComponent("geom'POINT(18.07 59.33)'"));
+    expect(url).toContain('50km');
+    expect(options.headers['User-Agent']).toBe('HittaStaden/1.0');
+  });
+
+  it('requests population and coordinate fields', async () => {
+    fetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ results: [] }),
+    });
+
+    await fetchNearby(59.33, 18.07, 50, TEST_OPTS);
+
+    const [url] = fetch.mock.calls[0];
+    expect(url).toContain('population');
+    expect(url).toContain('coordinates');
   });
 });
 
@@ -309,118 +285,169 @@ describe('processPlaces', () => {
   const originLat = 59.33;
   const originLon = 18.07;
 
-  const makeNode = (overrides) => ({
-    id: 1,
-    lat: 59.5,
-    lon: 18.1,
-    tags: { name: 'Testort', place: 'town' },
+  const makeRecord = (overrides) => ({
+    name: 'Testort',
+    coordinates: { lat: 59.5, lon: 18.1 },
+    population: 15000,
     ...overrides,
   });
 
-  it('filters out elements that have no name tag', () => {
+  it('filters out records that have no name', () => {
     const places = [
-      makeNode({ id: 1, tags: { place: 'town' } }),          // no name → filtered
-      makeNode({ id: 2, tags: { name: 'Namngiven', place: 'city' } }),
+      makeRecord({ name: null, population: 5000 }),
+      makeRecord({ name: 'Namngiven', population: 20000 }),
     ];
     const result = processPlaces(places, originLat, originLon, null);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe('Namngiven');
   });
 
-  it('filters out elements whose name is blank/whitespace', () => {
+  it('filters out records whose name is blank/whitespace', () => {
     const places = [
-      makeNode({ id: 1, tags: { name: '   ', place: 'town' } }),
-      makeNode({ id: 2, tags: { name: 'OK', place: 'town' } }),
+      makeRecord({ name: '   ', population: 5000 }),
+      makeRecord({ name: 'OK', population: 10000 }),
     ];
     const result = processPlaces(places, originLat, originLon, null);
     expect(result).toHaveLength(1);
   });
 
-  it('filters out the origin element by osm_id', () => {
+  it('filters out the origin city by name', () => {
     const places = [
-      makeNode({ id: 42, tags: { name: 'Origin City', place: 'city' } }),
-      makeNode({ id: 99, tags: { name: 'Nearby', place: 'town' } }),
+      makeRecord({ name: 'Stockholm', population: 1500000 }),
+      makeRecord({ name: 'Sollentuna', population: 70000 }),
     ];
-    const result = processPlaces(places, originLat, originLon, '42');
+    const result = processPlaces(places, originLat, originLon, 'Stockholm');
     expect(result).toHaveLength(1);
-    expect(result[0].name).toBe('Nearby');
+    expect(result[0].name).toBe('Sollentuna');
   });
 
-  it('does not filter any element when originOsmId is null', () => {
+  it('does not filter any record when originName is null', () => {
     const places = [
-      makeNode({ id: 42, tags: { name: 'A', place: 'city' } }),
-      makeNode({ id: 99, tags: { name: 'B', place: 'town' } }),
+      makeRecord({ name: 'A', population: 50000 }),
+      makeRecord({ name: 'B', population: 20000 }),
     ];
     const result = processPlaces(places, originLat, originLon, null);
     expect(result).toHaveLength(2);
   });
 
-  it('reads lat/lon directly from a node', () => {
-    const places = [makeNode({ id: 1, lat: 60.0, lon: 18.0, tags: { name: 'Nod', place: 'town' } })];
+  it('reads lat/lon from the coordinates object', () => {
+    const places = [makeRecord({ name: 'Nod', coordinates: { lat: 60.0, lon: 18.0 } })];
     const result = processPlaces(places, originLat, originLon, null);
     expect(result[0].lat).toBe(60.0);
     expect(result[0].lon).toBe(18.0);
   });
 
-  it('reads lat/lon from the center property of a way', () => {
-    const way = {
-      id: 10,
-      center: { lat: 60.1, lon: 18.2 },
-      tags: { name: 'Väg', place: 'village' },
-    };
-    const result = processPlaces([way], originLat, originLon, null);
-    expect(result[0].lat).toBe(60.1);
-    expect(result[0].lon).toBe(18.2);
-  });
-
-  it('filters out elements with no resolvable coordinates', () => {
-    const noCoords = { id: 5, tags: { name: 'Ingen position', place: 'town' } };
+  it('filters out records with no coordinates', () => {
+    const noCoords = { name: 'Ingen position', population: 5000, coordinates: null };
     const result = processPlaces([noCoords], originLat, originLon, null);
     expect(result).toHaveLength(0);
   });
 
-  it('assigns category "place" and correct type for place nodes', () => {
-    const places = [makeNode({ tags: { name: 'Stad', place: 'city' } })];
+  it('assigns type "city" for population >= 50000', () => {
+    const places = [makeRecord({ name: 'Storstad', population: 100000 })];
     const result = processPlaces(places, originLat, originLon, null);
-    expect(result[0].category).toBe('place');
     expect(result[0].type).toBe('city');
+    expect(result[0].category).toBe('place');
   });
 
-  it('assigns category "landmark" and correct type for tourism nodes', () => {
-    const places = [makeNode({ tags: { name: 'Sevärdhet', tourism: 'attraction' } })];
+  it('assigns type "town" for population 10000–49999', () => {
+    const places = [makeRecord({ name: 'Mellanstor', population: 25000 })];
     const result = processPlaces(places, originLat, originLon, null);
-    expect(result[0].category).toBe('landmark');
-    expect(result[0].type).toBe('attraction');
+    expect(result[0].type).toBe('town');
   });
 
-  it('assigns category "landmark" and correct type for historic nodes', () => {
-    const places = [makeNode({ tags: { name: 'Slott', historic: 'castle' } })];
+  it('assigns type "village" for population < 10000', () => {
+    const places = [makeRecord({ name: 'Liten', population: 5000 })];
     const result = processPlaces(places, originLat, originLon, null);
-    expect(result[0].category).toBe('landmark');
-    expect(result[0].type).toBe('castle');
-  });
-
-  it('falls back to "historic" type when historic tag value is missing', () => {
-    const places = [makeNode({ tags: { name: 'Okänd historik' } })];
-    const result = processPlaces(places, originLat, originLon, null);
-    expect(result[0].type).toBe('historic');
-    expect(result[0].category).toBe('landmark');
+    expect(result[0].type).toBe('village');
   });
 
   it('sorts results by distance ascending', () => {
-    // Place A is much further (latitude +5) than place B (latitude +0.5)
-    const farPlace = makeNode({ id: 1, lat: originLat + 5, lon: originLon, tags: { name: 'Långt bort', place: 'city' } });
-    const nearPlace = makeNode({ id: 2, lat: originLat + 0.5, lon: originLon, tags: { name: 'Nära', place: 'town' } });
+    const farPlace = makeRecord({ name: 'Långt bort', coordinates: { lat: originLat + 5, lon: originLon } });
+    const nearPlace = makeRecord({ name: 'Nära', coordinates: { lat: originLat + 0.5, lon: originLon } });
     const result = processPlaces([farPlace, nearPlace], originLat, originLon, null);
     expect(result[0].name).toBe('Nära');
     expect(result[1].name).toBe('Långt bort');
   });
 
   it('calculates a realistic distance via haversine', () => {
-    // Roughly 55 km north of Stockholm
-    const place = makeNode({ lat: 59.83, lon: 18.07, tags: { name: 'Uppland', place: 'town' } });
+    const place = makeRecord({ name: 'Uppland', coordinates: { lat: 59.83, lon: 18.07 } });
     const result = processPlaces([place], originLat, originLon, null);
     expect(result[0].dist).toBeGreaterThan(50);
     expect(result[0].dist).toBeLessThan(60);
+  });
+
+  it('includes population in the output', () => {
+    const places = [makeRecord({ name: 'Stad', population: 80000 })];
+    const result = processPlaces(places, originLat, originLon, null);
+    expect(result[0].population).toBe(80000);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Integration: search Borensberg → find nearby cities (real API calls, no mocks)
+// These tests call the real Nominatim and GeoNames dataset APIs.
+// A single beforeAll fetches the data so we don't hit rate limits.
+// Skipped in CI because external APIs are unreliable in hosted runners.
+// ---------------------------------------------------------------------------
+describe.skipIf(process.env.CI)('integration: search for Borensberg and find nearby cities', () => {
+  const TIMEOUT = 30_000;
+
+  let origin;
+  let records;
+  let places;
+
+  beforeAll(async () => {
+    origin = await geocode('Borensberg');
+    const originLat = parseFloat(origin.lat);
+    const originLon = parseFloat(origin.lon);
+    records = await fetchNearby(originLat, originLon, 50);
+    const originDisplayName = origin.display_name.split(',')[0];
+    places = processPlaces(records, originLat, originLon, originDisplayName);
+  }, TIMEOUT);
+
+  it('geocode returns coordinates for Borensberg', () => {
+    expect(origin).toBeDefined();
+    expect(origin.display_name).toBeDefined();
+    const lat = parseFloat(origin.lat);
+    const lon = parseFloat(origin.lon);
+    expect(lat).toBeGreaterThan(58);
+    expect(lat).toBeLessThan(59);
+    expect(lon).toBeGreaterThan(15);
+    expect(lon).toBeLessThan(16);
+  });
+
+  it('fetchNearby returns cities around Borensberg', () => {
+    expect(Array.isArray(records)).toBe(true);
+    expect(records.length).toBeGreaterThan(0);
+  });
+
+  it('Linköping is in the results', () => {
+    const linkoping = places.find(p => p.name === 'Linköping');
+    expect(linkoping).toBeDefined();
+    expect(linkoping.type).toBe('city');
+    expect(linkoping.category).toBe('place');
+    expect(linkoping.dist).toBeGreaterThan(15);
+    expect(linkoping.dist).toBeLessThan(40);
+  });
+
+  it('results are sorted by distance', () => {
+    for (let i = 1; i < places.length; i++) {
+      expect(places[i].dist).toBeGreaterThanOrEqual(places[i - 1].dist);
+    }
+  });
+
+  it('every result has valid data', () => {
+    for (const place of places) {
+      expect(place.name).toBeTruthy();
+      expect(typeof place.lat).toBe('number');
+      expect(typeof place.lon).toBe('number');
+      expect(place.dist).toBeGreaterThan(0);
+    }
+  });
+
+  it('Borensberg itself is excluded from results', () => {
+    const self = places.find(p => p.name === 'Borensberg');
+    expect(self).toBeUndefined();
   });
 });
