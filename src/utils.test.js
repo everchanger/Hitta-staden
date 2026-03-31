@@ -258,9 +258,7 @@ describe('fetchNearby', () => {
 
     const [url, options] = fetch.mock.calls[0];
     expect(url).toContain(TEST_DATASET_URL);
-    expect(url).toContain('within_distance');
-    expect(url).toContain('18.07');
-    expect(url).toContain('59.33');
+    expect(url).toContain(encodeURIComponent("geom'POINT(18.07 59.33)'"));
     expect(url).toContain('50km');
     expect(options.headers['User-Agent']).toBe('HittaStaden/1.0');
   });

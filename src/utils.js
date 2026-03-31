@@ -59,16 +59,16 @@ export async function fetchNearby(lat, lon, radiusKm, {
   timeoutMs = FETCH_TIMEOUT_MS,
 } = {}) {
   const where = `within_distance(coordinates, geom'POINT(${lon} ${lat})', ${radiusKm}km)`;
-  const params = new URLSearchParams({
-    where,
-    limit: '100',
-    select: 'name,coordinates,population,country_code',
-    order_by: 'population DESC',
-  });
+  const select = 'name,coordinates,population,country_code';
+  const url =
+    `${datasetUrl}?where=${encodeURIComponent(where)}` +
+    `&limit=100` +
+    `&select=${encodeURIComponent(select)}` +
+    `&order_by=${encodeURIComponent('population DESC')}`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${datasetUrl}?${params}`, {
+    const res = await fetch(url, {
       headers: { 'User-Agent': 'HittaStaden/1.0' },
       signal: controller.signal,
     });
