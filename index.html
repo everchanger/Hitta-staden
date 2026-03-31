@@ -425,11 +425,13 @@
     const OVERPASS_ENDPOINTS = [
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
-      'https://overpass.openstreetmap.ru/cgi/interpreter',
+      'https://overpass.private.coffee/api/interpreter',
     ];
-    // Client-side abort fires 25 s after the requests start. The server-side
-    // Overpass [timeout:N] is set to the same value so both limits align.
-    const OVERPASS_TIMEOUT_MS = 25000;
+    // Server-side Overpass [timeout:N] caps query processing time (seconds).
+    // The client-side abort is set higher to leave a margin for network
+    // transmission after the server has finished processing.
+    const OVERPASS_SERVER_TIMEOUT_S = 25;
+    const OVERPASS_TIMEOUT_MS = 35000;
 
     async function fetchNearby(lat, lon, radiusKm) {
       const radiusM = radiusKm * 1000;
@@ -437,15 +439,18 @@
       // [timeout:N] caps server-side processing (in seconds); "out center 500" limits
       // the response to 500 elements so that large cities don't produce huge JSON
       // payloads that stall res.json() indefinitely.
-      const OVERPASS_TIMEOUT_S = Math.floor(OVERPASS_TIMEOUT_MS / 1000);
+      // The historic filter uses an explicit value list to avoid matching very common
+      // tags like historic=building/house/farm that would return huge result sets and
+      // cause server-side timeouts.
+      const HISTORIC_VALUES = 'monument|castle|ruins|archaeological_site|memorial|fort|palace|city_gate|manor|church';
       const query = `
-        [out:json][timeout:${OVERPASS_TIMEOUT_S}];
+        [out:json][timeout:${OVERPASS_SERVER_TIMEOUT_S}];
         (
           node["place"~"^(city|town|village|hamlet)$"](around:${radiusM},${lat},${lon});
           node["tourism"="attraction"]["name"](around:${radiusM},${lat},${lon});
-          node["historic"]["name"](around:${radiusM},${lat},${lon});
+          node["historic"~"^(${HISTORIC_VALUES})$"]["name"](around:${radiusM},${lat},${lon});
           way["tourism"="attraction"]["name"](around:${radiusM},${lat},${lon});
-          way["historic"]["name"](around:${radiusM},${lat},${lon});
+          way["historic"~"^(${HISTORIC_VALUES})$"]["name"](around:${radiusM},${lat},${lon});
         );
         out center 500;
       `;
