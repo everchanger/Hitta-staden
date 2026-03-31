@@ -46,9 +46,8 @@ test.describe('Stockholm search', () => {
       await expect(item.locator('.distance')).toContainText(/\d/);
     }
 
-    // Map may not be visible if the Leaflet CDN didn't load (e.g. in CI)
-    // so we only check it's present in the DOM, not necessarily visible.
-    await expect(page.locator('#map')).toBeAttached();
+    // Map should be visible after a successful search with results
+    await expect(page.locator('#map')).toBeVisible();
 
     // Status text should mention Stockholm
     await expect(page.locator('#status')).toContainText(/platser nära Stockholm/i);
