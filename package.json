@@ -1,0 +1,23 @@
+{
+  "name": "hitta-staden",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/everchanger/Hitta-staden.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/everchanger/Hitta-staden/issues"
+  },
+  "homepage": "https://github.com/everchanger/Hitta-staden#readme",
+  "devDependencies": {
+    "vitest": "^4.1.2"
+  }
+}
