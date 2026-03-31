@@ -27,7 +27,8 @@ async function searchCity(page, cityName) {
 test.describe('Stockholm search', () => {
   test('finds nearby places and shows them on the page', async ({ page }) => {
     const outcome = await searchCity(page, 'Stockholm');
-    expect(outcome).toBe('results');
+    const statusText = await page.locator('#status').textContent();
+    expect(outcome, `search failed: ${statusText}`).toBe('results');
 
     // Origin card should mention Stockholm
     const originCard = page.locator('.origin-card');
@@ -59,7 +60,8 @@ test.describe('Stockholm search', () => {
 test.describe('Höör search', () => {
   test('shows nearby places for a small town', async ({ page }) => {
     const outcome = await searchCity(page, 'Höör');
-    expect(outcome).toBe('results');
+    const statusText = await page.locator('#status').textContent();
+    expect(outcome, `search failed: ${statusText}`).toBe('results');
 
     const originCard = page.locator('.origin-card');
     await expect(originCard).toContainText('Höör');
@@ -77,7 +79,8 @@ test.describe('Kiruna search', () => {
     const outcome = await searchCity(page, 'Kiruna');
 
     // Kiruna is remote — may have results or may show "no places found"
-    expect(outcome).not.toBe('error');
+    const statusText = await page.locator('#status').textContent();
+    expect(outcome, `search failed: ${statusText}`).not.toBe('error');
 
     if (outcome === 'results') {
       const originCard = page.locator('.origin-card');
