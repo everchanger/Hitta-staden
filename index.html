@@ -427,12 +427,19 @@
       'https://overpass.kumi.systems/api/interpreter',
       'https://overpass.openstreetmap.ru/cgi/interpreter',
     ];
+    // Client-side abort fires 25 s after the requests start. The server-side
+    // Overpass [timeout:N] is set to the same value so both limits align.
+    const OVERPASS_TIMEOUT_MS = 25000;
 
     async function fetchNearby(lat, lon, radiusKm) {
       const radiusM = radiusKm * 1000;
-      // Query cities/towns/villages/hamlets and notable landmarks within the radius
+      // Query cities/towns/villages/hamlets and notable landmarks within the radius.
+      // [timeout:N] caps server-side processing (in seconds); "out center 500" limits
+      // the response to 500 elements so that large cities don't produce huge JSON
+      // payloads that stall res.json() indefinitely.
+      const OVERPASS_TIMEOUT_S = Math.floor(OVERPASS_TIMEOUT_MS / 1000);
       const query = `
-        [out:json][timeout:30];
+        [out:json][timeout:${OVERPASS_TIMEOUT_S}];
         (
           node["place"~"^(city|town|village|hamlet)$"](around:${radiusM},${lat},${lon});
           node["tourism"="attraction"]["name"](around:${radiusM},${lat},${lon});
@@ -440,15 +447,20 @@
           way["tourism"="attraction"]["name"](around:${radiusM},${lat},${lon});
           way["historic"]["name"](around:${radiusM},${lat},${lon});
         );
-        out center;
+        out center 500;
       `;
 
-      const fetchFromEndpoint = async (endpoint) => {
+      // One AbortController per endpoint so we can cancel losers once a winner
+      // resolves, and cancel all of them if the overall timeout fires.
+      const controllers = OVERPASS_ENDPOINTS.map(() => new AbortController());
+      const timeoutId = setTimeout(() => controllers.forEach(c => c.abort()), OVERPASS_TIMEOUT_MS);
+
+      const fetchFromEndpoint = async (endpoint, controller) => {
         const res = await fetch(endpoint, {
           method: 'POST',
           body: `data=${encodeURIComponent(query)}`,
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          signal: AbortSignal.timeout(35000),
+          signal: controller.signal,
         });
         if (!res.ok) throw new Error(`Overpass API returnerade ett fel (HTTP ${res.status}).`);
         const data = await res.json();
@@ -456,9 +468,15 @@
       };
 
       try {
-        return await Promise.any(OVERPASS_ENDPOINTS.map(fetchFromEndpoint));
+        return await Promise.any(
+          OVERPASS_ENDPOINTS.map((endpoint, i) => fetchFromEndpoint(endpoint, controllers[i]))
+        );
       } catch {
         throw new Error('Overpass API är inte tillgänglig. Försök igen senare.');
+      } finally {
+        clearTimeout(timeoutId);
+        // Cancel any still-running requests (losing endpoints or aborted ones).
+        controllers.forEach(c => c.abort());
       }
     }
 
