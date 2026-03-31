@@ -12,8 +12,10 @@ async function searchCity(page, cityName) {
   await input.fill(cityName);
   await btn.click();
 
-  // Wait for the button to become enabled again (search finished)
-  await expect(btn).toBeEnabled({ timeout: 120_000 });
+  // The app's worst case is ~77 s (35 s Overpass timeout × 2 attempts + 2 s
+  // retry delay + geocode).  Wait just above that so a real failure is
+  // surfaced quickly instead of hanging for minutes.
+  await expect(btn).toBeEnabled({ timeout: 80_000 });
 
   // Check which outcome occurred
   const hasResults = await page.locator('.result-list').isVisible();
@@ -127,7 +129,7 @@ test.describe('error handling', () => {
     await btn.click();
 
     const status = page.locator('#status');
-    await expect(status).toContainText(/Kunde inte hitta/i, { timeout: 30_000 });
+    await expect(status).toContainText(/Kunde inte hitta/i, { timeout: 15_000 });
     await expect(status).toHaveClass(/error/);
   });
 });
@@ -149,7 +151,7 @@ test.describe('search button state', () => {
     await expect(btn).toContainText('Söker');
 
     // Wait for search to complete (success or error)
-    await expect(btn).toBeEnabled({ timeout: 120_000 });
+    await expect(btn).toBeEnabled({ timeout: 80_000 });
 
     // Button should say "Sök" again
     await expect(btn).toContainText('Sök');
