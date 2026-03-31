@@ -394,6 +394,17 @@ describe('processPlaces', () => {
     const result = processPlaces(places, originLat, originLon, null);
     expect(result[0].population).toBe(80000);
   });
+
+  it('returns at most 10 results', () => {
+    const places = Array.from({ length: 15 }, (_, i) =>
+      makeRecord({ name: `Ort${i}`, coordinates: { lat: originLat + (i + 1) * 0.1, lon: originLon } })
+    );
+    const result = processPlaces(places, originLat, originLon, null);
+    expect(result).toHaveLength(10);
+    // Should keep the 10 closest
+    expect(result[0].name).toBe('Ort0');
+    expect(result[9].name).toBe('Ort9');
+  });
 });
 
 // ---------------------------------------------------------------------------

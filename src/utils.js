@@ -146,5 +146,6 @@ export function processPlaces(places, originLat, originLon, originName) {
         dist: haversine(originLat, originLon, lat, lon),
       };
     })
-    .sort((a, b) => a.dist - b.dist);
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, 10);
 }
