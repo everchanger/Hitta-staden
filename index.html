@@ -426,6 +426,7 @@
       'https://overpass-api.de/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
       'https://overpass.private.coffee/api/interpreter',
+      'https://overpass.openstreetmap.fr/api/interpreter',
     ];
     // Server-side Overpass [timeout:N] caps query processing time (seconds).
     // The client-side abort is set higher to leave a margin for network
@@ -455,11 +456,6 @@
         out center 500;
       `;
 
-      // One AbortController per endpoint so we can cancel losers once a winner
-      // resolves, and cancel all of them if the overall timeout fires.
-      const controllers = OVERPASS_ENDPOINTS.map(() => new AbortController());
-      const timeoutId = setTimeout(() => controllers.forEach(c => c.abort()), OVERPASS_TIMEOUT_MS);
-
       const fetchFromEndpoint = async (endpoint, controller) => {
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -472,17 +468,30 @@
         return data.elements || [];
       };
 
-      try {
-        return await Promise.any(
-          OVERPASS_ENDPOINTS.map((endpoint, i) => fetchFromEndpoint(endpoint, controllers[i]))
-        );
-      } catch {
-        throw new Error('Overpass API är inte tillgänglig. Försök igen senare.');
-      } finally {
-        clearTimeout(timeoutId);
-        // Cancel any still-running requests (losing endpoints or aborted ones).
-        controllers.forEach(c => c.abort());
+      // Retry once after a short delay before surfacing the error to the user,
+      // so that a transient overload on all endpoints doesn't immediately fail.
+      const MAX_ATTEMPTS = 2;
+      const RETRY_DELAY_MS = 2000;
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        // One AbortController per endpoint so we can cancel losers once a winner
+        // resolves, and cancel all of them if the overall timeout fires.
+        const controllers = OVERPASS_ENDPOINTS.map(() => new AbortController());
+        const timeoutId = setTimeout(() => controllers.forEach(c => c.abort()), OVERPASS_TIMEOUT_MS);
+        try {
+          return await Promise.any(
+            OVERPASS_ENDPOINTS.map((endpoint, i) => fetchFromEndpoint(endpoint, controllers[i]))
+          );
+        } catch {
+          if (attempt < MAX_ATTEMPTS - 1) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          }
+        } finally {
+          clearTimeout(timeoutId);
+          // Cancel any still-running requests (losing endpoints or aborted ones).
+          controllers.forEach(c => c.abort());
+        }
       }
+      throw new Error('Overpass API är inte tillgänglig. Försök igen senare.');
     }
 
     function renderMap(originLat, originLon, originName, places) {
