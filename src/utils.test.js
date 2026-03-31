@@ -431,8 +431,9 @@ describe('processPlaces', () => {
 // Integration: search Borensberg → find Linköping (real API calls, no mocks)
 // These tests call the real Nominatim and Overpass APIs.
 // A single beforeAll fetches the data so we don't hit API rate limits.
+// Skipped in CI because external APIs are unreliable in hosted runners.
 // ---------------------------------------------------------------------------
-describe('integration: search for Borensberg and find nearby cities', () => {
+describe.skipIf(process.env.CI)('integration: search for Borensberg and find nearby cities', () => {
   const TIMEOUT = 60_000;
 
   let origin;
