@@ -33,13 +33,22 @@ export function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+const RETRY_DELAY_MS = 500;
+
+/**
+ * Fetch with automatic retries for transient network errors.
+ * @param {string} url        Request URL
+ * @param {RequestInit} options  Fetch options
+ * @param {number} retries    Max retry attempts (default 2)
+ * @returns {Promise<Response>}
+ */
 async function fetchWithRetry(url, options = {}, retries = 2) {
-  for (let attempt = 0; ; attempt++) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await fetch(url, options);
     } catch (err) {
       if (attempt >= retries) throw err;
-      await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS * (attempt + 1)));
     }
   }
 }
