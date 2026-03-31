@@ -8,9 +8,11 @@ export default defineConfig({
   retries: 2,
   workers: 1,
   reporter: 'list',
+  outputDir: 'test-results',
   use: {
     baseURL: 'http://localhost:3123',
     headless: true,
+    screenshot: 'only-on-failure',
   },
   projects: [
     {

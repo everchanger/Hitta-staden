@@ -55,18 +55,23 @@ async function fetchWithRetry(url, options = {}, retries = 2) {
 
 export async function geocode(cityName) {
   const url =
-    `https://nominatim.openstreetmap.org/search?` +
-    `q=${encodeURIComponent(cityName)}&format=json&limit=1&addressdetails=1`;
-  const res = await fetchWithRetry(url, {
-    headers: {
-      'Accept-Language': 'sv,en',
-      'User-Agent': 'HittaStaden/1.0',
-    }
-  });
-  if (!res.ok) throw new Error(`Nominatim returnerade ett fel (HTTP ${res.status}).`);
+    `https://photon.komoot.io/api/?` +
+    `q=${encodeURIComponent(cityName)}&limit=1`;
+  const res = await fetchWithRetry(url);
+  if (!res.ok) throw new Error(`Geocoding returnerade ett fel (HTTP ${res.status}).`);
   const data = await res.json();
-  if (!data.length) throw new Error(`Kunde inte hitta "${cityName}". Försök med ett annat namn.`);
-  return data[0];
+  const features = data.features || [];
+  if (!features.length) throw new Error(`Kunde inte hitta "${cityName}". Försök med ett annat namn.`);
+  const feature = features[0];
+  // GeoJSON uses [longitude, latitude] order
+  const [lon, lat] = feature.geometry.coordinates;
+  const props = feature.properties || {};
+  const parts = [props.name, props.county, props.country].filter(Boolean);
+  return {
+    lat: String(lat),
+    lon: String(lon),
+    display_name: parts.join(', '),
+  };
 }
 
 export const GEONAMES_DATASET_URL =
@@ -141,5 +146,6 @@ export function processPlaces(places, originLat, originLon, originName) {
         dist: haversine(originLat, originLon, lat, lon),
       };
     })
-    .sort((a, b) => a.dist - b.dist);
+    .sort((a, b) => a.dist - b.dist)
+    .slice(0, 10);
 }
