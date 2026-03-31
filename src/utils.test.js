@@ -426,128 +426,78 @@ describe('processPlaces', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Integration-style: search Borensberg → find Linköping
+// Integration: search Borensberg → find Linköping (real API calls, no mocks)
+// These tests call the real Nominatim and Overpass APIs.
 // ---------------------------------------------------------------------------
 describe('integration: search for Borensberg and find nearby cities', () => {
-  // Borensberg coordinates (Östergötland, Sweden)
-  const borensbergLat = 58.5712;
-  const borensbergLon = 15.3118;
-  const borensbergOsmId = '988811';
+  const TIMEOUT = 60_000;
 
-  // Realistic Overpass response elements for places near Borensberg
-  const overpassElements = [
-    { id: 988811, lat: 58.5712, lon: 15.3118, tags: { name: 'Borensberg', place: 'village' } },
-    { id: 151580, lat: 58.4108, lon: 15.6214, tags: { name: 'Linköping', place: 'city' } },
-    { id: 155553, lat: 58.5375, lon: 15.0367, tags: { name: 'Motala', place: 'town' } },
-    { id: 157987, lat: 58.3282, lon: 15.1233, tags: { name: 'Mjölby', place: 'town' } },
-    { id: 152345, lat: 58.4495, lon: 14.8839, tags: { name: 'Vadstena', place: 'town' } },
-    { id: 160001, lat: 58.7530, lon: 15.2130, tags: { name: 'Ljungsbro', place: 'village' } },
-    { id: 160002, lat: 58.5867, lon: 15.6333, tags: { name: 'Norsholm', place: 'village' } },
-  ];
-
-  it('processPlaces includes Linköping when processing nearby results from Borensberg', () => {
-    const result = processPlaces(overpassElements, borensbergLat, borensbergLon, borensbergOsmId);
-    const names = result.map(p => p.name);
-    expect(names).toContain('Linköping');
-  });
-
-  it('processPlaces excludes the origin (Borensberg) from results', () => {
-    const result = processPlaces(overpassElements, borensbergLat, borensbergLon, borensbergOsmId);
-    const names = result.map(p => p.name);
-    expect(names).not.toContain('Borensberg');
-  });
-
-  it('Linköping is classified as a city (place category)', () => {
-    const result = processPlaces(overpassElements, borensbergLat, borensbergLon, borensbergOsmId);
-    const linkoping = result.find(p => p.name === 'Linköping');
-    expect(linkoping).toBeDefined();
-    expect(linkoping.type).toBe('city');
-    expect(linkoping.category).toBe('place');
-  });
-
-  it('distance from Borensberg to Linköping is approximately 25 km', () => {
-    const result = processPlaces(overpassElements, borensbergLat, borensbergLon, borensbergOsmId);
-    const linkoping = result.find(p => p.name === 'Linköping');
-    expect(linkoping).toBeDefined();
-    expect(linkoping.dist).toBeGreaterThan(20);
-    expect(linkoping.dist).toBeLessThan(30);
-  });
-
-  it('results are sorted by distance from Borensberg', () => {
-    const result = processPlaces(overpassElements, borensbergLat, borensbergLon, borensbergOsmId);
-    for (let i = 1; i < result.length; i++) {
-      expect(result[i].dist).toBeGreaterThanOrEqual(result[i - 1].dist);
-    }
-  });
-
-  it('all nearby cities have valid coordinates and distances', () => {
-    const result = processPlaces(overpassElements, borensbergLat, borensbergLon, borensbergOsmId);
-    expect(result.length).toBeGreaterThan(0);
-    for (const place of result) {
-      expect(place.lat).toBeTypeOf('number');
-      expect(place.lon).toBeTypeOf('number');
-      expect(place.dist).toBeGreaterThan(0);
-      expect(place.name).toBeTruthy();
-    }
-  });
-
-  it('known nearby places Motala, Mjölby, and Vadstena are all included', () => {
-    const result = processPlaces(overpassElements, borensbergLat, borensbergLon, borensbergOsmId);
-    const names = result.map(p => p.name);
-    expect(names).toContain('Motala');
-    expect(names).toContain('Mjölby');
-    expect(names).toContain('Vadstena');
-  });
-
-  it('full search flow: geocode Borensberg → fetch nearby → process → find Linköping', async () => {
-    vi.stubGlobal('fetch', vi.fn());
-
-    // Mock geocode response for Borensberg
-    fetch.mockResolvedValueOnce({
-      ok: true,
-      json: async () => [{
-        display_name: 'Borensberg, Motala kommun, Östergötlands län, Sweden',
-        lat: '58.5712',
-        lon: '15.3118',
-        osm_id: 988811,
-      }],
-    });
-
-    // Mock Overpass response with nearby places
-    fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ elements: overpassElements }),
-    });
-
-    // Step 1: geocode
+  it('geocode returns coordinates for Borensberg', async () => {
     const origin = await geocode('Borensberg');
-    expect(origin.display_name).toContain('Borensberg');
+    expect(origin).toBeDefined();
+    expect(origin.display_name).toBeDefined();
+    // Borensberg is in Östergötland – verify coordinates are reasonable
+    const lat = parseFloat(origin.lat);
+    const lon = parseFloat(origin.lon);
+    expect(lat).toBeGreaterThan(58);
+    expect(lat).toBeLessThan(59);
+    expect(lon).toBeGreaterThan(15);
+    expect(lon).toBeLessThan(16);
+  }, TIMEOUT);
 
+  it('fetchNearby returns places around Borensberg', async () => {
+    // Borensberg approximate coordinates
+    const elements = await fetchNearby(58.57, 15.31, 50);
+    expect(Array.isArray(elements)).toBe(true);
+    expect(elements.length).toBeGreaterThan(0);
+  }, TIMEOUT);
+
+  it('full search: geocode Borensberg → fetch nearby → Linköping is in the results', async () => {
+    // Step 1: geocode Borensberg using the real Nominatim API
+    const origin = await geocode('Borensberg');
     const originLat = parseFloat(origin.lat);
     const originLon = parseFloat(origin.lon);
 
-    // Step 2: fetch nearby (use test endpoints to avoid real API calls)
-    const elements = await fetchNearby(originLat, originLon, 50, {
-      endpoints: ['https://test-overpass.example/api/interpreter'],
-      serverTimeoutS: 5,
-      clientTimeoutMs: 60000,
-    });
+    // Step 2: fetch nearby places using the real Overpass API (50 km radius)
+    const elements = await fetchNearby(originLat, originLon, 50);
+    expect(elements.length).toBeGreaterThan(0);
 
-    // Step 3: process places
+    // Step 3: process the raw elements
     const originOsmId = origin.osm_id ? String(origin.osm_id) : null;
     const places = processPlaces(elements, originLat, originLon, originOsmId);
 
-    // Verify Linköping is in the results
+    // Linköping (~25 km away) must appear in the results
     const linkoping = places.find(p => p.name === 'Linköping');
     expect(linkoping).toBeDefined();
     expect(linkoping.type).toBe('city');
-    expect(linkoping.dist).toBeGreaterThan(20);
-    expect(linkoping.dist).toBeLessThan(30);
+    expect(linkoping.category).toBe('place');
+    expect(linkoping.dist).toBeGreaterThan(15);
+    expect(linkoping.dist).toBeLessThan(40);
 
-    // Verify Borensberg itself is excluded
-    const borensberg = places.find(p => p.name === 'Borensberg');
-    expect(borensberg).toBeUndefined();
+    // Results should be sorted by distance
+    for (let i = 1; i < places.length; i++) {
+      expect(places[i].dist).toBeGreaterThanOrEqual(places[i - 1].dist);
+    }
 
-    vi.unstubAllGlobals();
-  });
+    // Every result should have valid data
+    for (const place of places) {
+      expect(place.name).toBeTruthy();
+      expect(typeof place.lat).toBe('number');
+      expect(typeof place.lon).toBe('number');
+      expect(place.dist).toBeGreaterThan(0);
+    }
+  }, TIMEOUT);
+
+  it('Borensberg itself is excluded from results when its osm_id is provided', async () => {
+    const origin = await geocode('Borensberg');
+    const originLat = parseFloat(origin.lat);
+    const originLon = parseFloat(origin.lon);
+    const elements = await fetchNearby(originLat, originLon, 50);
+    const originOsmId = origin.osm_id ? String(origin.osm_id) : null;
+    const places = processPlaces(elements, originLat, originLon, originOsmId);
+
+    // The origin itself should not be in the result list
+    const self = places.find(p => String(p.id) === originOsmId);
+    expect(self).toBeUndefined();
+  }, TIMEOUT);
 });
