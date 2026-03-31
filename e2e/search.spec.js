@@ -49,6 +49,9 @@ test.describe('Stockholm search', () => {
     // Map should be visible after a successful search with results
     await expect(page.locator('#map')).toBeVisible();
 
+    // Capture a screenshot to validate the map is showing
+    await page.screenshot({ path: 'test-results/stockholm-search.png', fullPage: true });
+
     // Status text should mention Stockholm
     await expect(page.locator('#status')).toContainText(/platser nära Stockholm/i);
   });

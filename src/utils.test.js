@@ -147,30 +147,36 @@ describe('geocode', () => {
     vi.unstubAllGlobals();
   });
 
-  it('returns the first result from Nominatim on success', async () => {
-    const mockResult = {
-      display_name: 'Stockholm, Sweden',
-      lat: '59.3293',
-      lon: '18.0686',
-      osm_id: 12345,
+  it('returns a geocode result from Photon on success', async () => {
+    const mockPhotonResponse = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [18.0686, 59.3293] },
+        properties: { name: 'Stockholm', county: 'Stockholms län', country: 'Sverige' },
+      }],
     };
     fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => [mockResult],
+      json: async () => mockPhotonResponse,
     });
 
     const result = await geocode('Stockholm');
-    expect(result).toEqual(mockResult);
+    expect(result).toEqual({
+      lat: '59.3293',
+      lon: '18.0686',
+      display_name: 'Stockholm, Stockholms län, Sverige',
+    });
     expect(fetch).toHaveBeenCalledOnce();
     const [url] = fetch.mock.calls[0];
     expect(url).toContain('Stockholm');
-    expect(url).toContain('nominatim.openstreetmap.org');
+    expect(url).toContain('photon.komoot.io');
   });
 
   it('throws a descriptive error when city is not found', async () => {
     fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => [],
+      json: async () => ({ type: 'FeatureCollection', features: [] }),
     });
 
     await expect(geocode('XYZBogusCity')).rejects.toThrow(
@@ -178,24 +184,30 @@ describe('geocode', () => {
     );
   });
 
-  it('throws on HTTP error from Nominatim', async () => {
+  it('throws on HTTP error from geocoder', async () => {
     fetch.mockResolvedValueOnce({ ok: false, status: 500 });
 
     await expect(geocode('Stockholm')).rejects.toThrow(
-      'Nominatim returnerade ett fel (HTTP 500).'
+      'Geocoding returnerade ett fel (HTTP 500).'
     );
   });
 
-  it('sends the Accept-Language header', async () => {
+  it('builds display_name from available properties', async () => {
+    const mockResponse = {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [11.97, 57.71] },
+        properties: { name: 'Göteborg', country: 'Sverige' },
+      }],
+    };
     fetch.mockResolvedValueOnce({
       ok: true,
-      json: async () => [{ display_name: 'Göteborg, Sweden', lat: '57.71', lon: '11.97' }],
+      json: async () => mockResponse,
     });
 
-    await geocode('Göteborg');
-    const [, options] = fetch.mock.calls[0];
-    expect(options.headers['Accept-Language']).toBe('sv,en');
-    expect(options.headers['User-Agent']).toBe('HittaStaden/1.0');
+    const result = await geocode('Göteborg');
+    expect(result.display_name).toBe('Göteborg, Sverige');
   });
 });
 
@@ -386,7 +398,7 @@ describe('processPlaces', () => {
 
 // ---------------------------------------------------------------------------
 // Integration: search Borensberg → find nearby cities (real API calls, no mocks)
-// These tests call the real Nominatim and GeoNames dataset APIs.
+// These tests call the real Photon and GeoNames dataset APIs.
 // A single beforeAll fetches the data so we don't hit rate limits.
 // Skipped in CI because external APIs are unreliable in hosted runners.
 // ---------------------------------------------------------------------------
