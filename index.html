@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hitta närmaste städer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #f0f4f8;
+      color: #1a202c;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #2b6cb0;
+    }
+
+    header p {
+      margin-top: 0.5rem;
+      color: #4a5568;
+      font-size: 1rem;
+    }
+
+    .search-box {
+      display: flex;
+      gap: 0.5rem;
+      width: 100%;
+      max-width: 540px;
+      margin-bottom: 2rem;
+    }
+
+    .search-box input {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      border: 2px solid #bee3f8;
+      border-radius: 8px;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+      background: #fff;
+    }
+
+    .search-box input:focus {
+      border-color: #3182ce;
+    }
+
+    .search-box button {
+      padding: 0.75rem 1.4rem;
+      background: #3182ce;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+
+    .search-box button:hover {
+      background: #2b6cb0;
+    }
+
+    .search-box button:disabled {
+      background: #90cdf4;
+      cursor: not-allowed;
+    }
+
+    #radius-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      font-size: 0.95rem;
+      color: #4a5568;
+    }
+
+    #radius-row input[type=range] {
+      accent-color: #3182ce;
+      cursor: pointer;
+    }
+
+    #radius-label {
+      min-width: 5ch;
+      font-weight: 600;
+      color: #2b6cb0;
+    }
+
+    #status {
+      min-height: 1.5rem;
+      font-size: 0.95rem;
+      color: #718096;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+
+    #status.error {
+      color: #c53030;
+    }
+
+    #results {
+      width: 100%;
+      max-width: 600px;
+    }
+
+    .origin-card {
+      background: #ebf8ff;
+      border: 1px solid #bee3f8;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1.25rem;
+      font-size: 0.95rem;
+      color: #2c5282;
+    }
+
+    .origin-card strong {
+      display: block;
+      font-size: 1.05rem;
+      margin-bottom: 0.2rem;
+    }
+
+    .result-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .result-item {
+      background: #fff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 0.9rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: box-shadow 0.15s;
+    }
+
+    .result-item:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .result-item .place-name {
+      font-weight: 600;
+      font-size: 1rem;
+    }
+
+    .result-item .place-type {
+      font-size: 0.8rem;
+      color: #718096;
+      margin-top: 0.15rem;
+    }
+
+    .result-item .distance {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #3182ce;
+      white-space: nowrap;
+      margin-left: 1rem;
+    }
+
+    .rank-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.6rem;
+      height: 1.6rem;
+      border-radius: 50%;
+      background: #ebf8ff;
+      color: #2b6cb0;
+      font-size: 0.75rem;
+      font-weight: 700;
+      margin-right: 0.75rem;
+      flex-shrink: 0;
+    }
+
+    .place-info {
+      display: flex;
+      align-items: center;
+      min-width: 0;
+    }
+
+    .place-text {
+      min-width: 0;
+    }
+
+    .place-name {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    footer {
+      margin-top: 3rem;
+      font-size: 0.8rem;
+      color: #a0aec0;
+      text-align: center;
+    }
+
+    footer a { color: #90cdf4; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🗺️ Hitta närmaste städer</h1>
+    <p>Ange en stad eller ort för att se de närmaste platserna runt om den.</p>
+  </header>
+
+  <form class="search-box" id="search-form" autocomplete="off">
+    <input
+      type="text"
+      id="city-input"
+      placeholder="Skriv en stad, t.ex. Stockholm…"
+      aria-label="Stad eller ort"
+      required
+    />
+    <button type="submit" id="search-btn">Sök</button>
+  </form>
+
+  <div id="radius-row">
+    <label for="radius-slider">Sökradie:</label>
+    <input
+      type="range"
+      id="radius-slider"
+      min="10"
+      max="200"
+      step="10"
+      value="50"
+      aria-label="Sökradie i kilometer"
+    />
+    <span id="radius-label">50 km</span>
+  </div>
+
+  <div id="status" role="status" aria-live="polite"></div>
+
+  <div id="results" aria-live="polite"></div>
+
+  <footer>
+    Data från <a href="https://www.openstreetmap.org" target="_blank" rel="noopener">OpenStreetMap</a>
+    via <a href="https://nominatim.openstreetmap.org" target="_blank" rel="noopener">Nominatim</a>
+    &amp; <a href="https://overpass-api.de" target="_blank" rel="noopener">Overpass API</a>.
+  </footer>
+
+  <script>
+    const form = document.getElementById('search-form');
+    const input = document.getElementById('city-input');
+    const btn = document.getElementById('search-btn');
+    const statusEl = document.getElementById('status');
+    const resultsEl = document.getElementById('results');
+    const radiusSlider = document.getElementById('radius-slider');
+    const radiusLabel = document.getElementById('radius-label');
+
+    radiusSlider.addEventListener('input', () => {
+      radiusLabel.textContent = `${radiusSlider.value} km`;
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const city = input.value.trim();
+      if (!city) return;
+      await search(city);
+    });
+
+    function setStatus(msg, isError = false) {
+      statusEl.textContent = msg;
+      statusEl.className = isError ? 'error' : '';
+    }
+
+    function setLoading(loading) {
+      btn.disabled = loading;
+      btn.textContent = loading ? 'Söker…' : 'Sök';
+    }
+
+    /** Haversine formula – returns distance in km between two lat/lon points */
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(lat1 * Math.PI / 180) *
+        Math.cos(lat2 * Math.PI / 180) *
+        Math.sin(dLon / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function formatDistance(km) {
+      return km < 1
+        ? `${Math.round(km * 1000)} m`
+        : `${km.toFixed(1)} km`;
+    }
+
+    const PLACE_TYPE_LABELS = {
+      city: 'Stad',
+      town: 'Tätort',
+      village: 'By',
+      hamlet: 'Småort',
+      suburb: 'Stadsdel',
+      municipality: 'Kommun',
+    };
+
+    async function geocode(cityName) {
+      const url =
+        `https://nominatim.openstreetmap.org/search?` +
+        `q=${encodeURIComponent(cityName)}&format=json&limit=1&addressdetails=1`;
+      const res = await fetch(url, {
+        headers: { 'Accept-Language': 'sv,en' }
+      });
+      if (!res.ok) throw new Error(`Nominatim returnerade ett fel (HTTP ${res.status}).`);
+      const data = await res.json();
+      if (!data.length) throw new Error(`Kunde inte hitta "${cityName}". Försök med ett annat namn.`);
+      return data[0];
+    }
+
+    async function fetchNearby(lat, lon, radiusKm) {
+      const radiusM = radiusKm * 1000;
+      // Query cities, towns, villages and hamlets within the radius
+      const query = `
+        [out:json][timeout:25];
+        (
+          node["place"~"^(city|town|village|hamlet|suburb)$"](around:${radiusM},${lat},${lon});
+        );
+        out body;
+      `;
+      const res = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
+        body: `data=${encodeURIComponent(query)}`,
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+      });
+      if (!res.ok) throw new Error(`Overpass API returnerade ett fel (HTTP ${res.status}).`);
+      const data = await res.json();
+      return data.elements || [];
+    }
+
+    async function search(cityName) {
+      setLoading(true);
+      setStatus('Letar upp koordinater…');
+      resultsEl.innerHTML = '';
+
+      try {
+        // Step 1: geocode the input city
+        const origin = await geocode(cityName);
+        const originLat = parseFloat(origin.lat);
+        const originLon = parseFloat(origin.lon);
+        const originDisplayName = origin.display_name.split(',')[0];
+
+        // Step 2: fetch nearby places via Overpass
+        const radiusKm = parseInt(radiusSlider.value, 10);
+        setStatus(`Hämtar orter inom ${radiusKm} km…`);
+        const places = await fetchNearby(originLat, originLon, radiusKm);
+
+        // Step 3: calculate distances and exclude the origin itself
+        const originOsmId = origin.osm_id ? String(origin.osm_id) : null;
+
+        const withDist = places
+          .filter(p => {
+            // Exclude the exact origin node if we can identify it
+            if (originOsmId && String(p.id) === originOsmId) return false;
+            const name = p.tags && p.tags.name;
+            return name && name.trim().length > 0;
+          })
+          .map(p => ({
+            id: p.id,
+            name: p.tags.name,
+            type: p.tags.place,
+            lat: p.lat,
+            lon: p.lon,
+            dist: haversine(originLat, originLon, p.lat, p.lon),
+          }))
+          .sort((a, b) => a.dist - b.dist);
+
+        if (!withDist.length) {
+          setStatus(`Inga orter hittades inom ${radiusKm} km från "${originDisplayName}".`);
+          setLoading(false);
+          return;
+        }
+
+        setStatus(`Visar ${withDist.length} orter nära ${originDisplayName}`);
+
+        // Render
+        const originCard = document.createElement('div');
+        originCard.className = 'origin-card';
+        originCard.innerHTML = `
+          <strong>📍 ${escapeHtml(originDisplayName)}</strong>
+          ${escapeHtml(origin.display_name.split(',').slice(1, 3).join(',').trim())}
+        `;
+
+        const list = document.createElement('ul');
+        list.className = 'result-list';
+
+        withDist.forEach((place, i) => {
+          const li = document.createElement('li');
+          li.className = 'result-item';
+          const typeLabel = PLACE_TYPE_LABELS[place.type] || place.type || 'Ort';
+          li.innerHTML = `
+            <div class="place-info">
+              <span class="rank-badge">${i + 1}</span>
+              <div class="place-text">
+                <div class="place-name">${escapeHtml(place.name)}</div>
+                <div class="place-type">${escapeHtml(typeLabel)}</div>
+              </div>
+            </div>
+            <span class="distance">${formatDistance(place.dist)}</span>
+          `;
+          list.appendChild(li);
+        });
+
+        resultsEl.appendChild(originCard);
+        resultsEl.appendChild(list);
+
+      } catch (err) {
+        setStatus(err.message || 'Något gick fel. Försök igen.', true);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  </script>
+</body>
+</html>
